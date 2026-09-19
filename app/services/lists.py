@@ -160,3 +160,36 @@ def get_list(conn: sqlite3.Connection, list_id: int) -> dict | None:
 def delete_list(conn: sqlite3.Connection, list_id: int) -> bool:
     cur = conn.execute("DELETE FROM lists WHERE id = ?", (list_id,))
     return cur.rowcount > 0
+
+
+def get_cards(
+    conn: sqlite3.Connection,
+    list_id: int,
+    deck_indices: list[int] | None = None,
+) -> dict | None:
+    row = conn.execute(
+        "SELECT id, name, deck_size FROM lists WHERE id = ?", (list_id,)
+    ).fetchone()
+    if row is None:
+        return None
+
+    sql = (
+        "SELECT id, term, definition, position, deck_index FROM words "
+        "WHERE list_id = ?"
+    )
+    params: list[int] = [list_id]
+    if deck_indices:
+        placeholders = ",".join("?" for _ in deck_indices)
+        sql += f" AND deck_index IN ({placeholders})"
+        params.extend(deck_indices)
+    sql += " ORDER BY position"
+
+    cards = [dict(w) for w in conn.execute(sql, params).fetchall()]
+    return {
+        "list_id": row["id"],
+        "name": row["name"],
+        "deck_size": row["deck_size"],
+        "decks": sorted({c["deck_index"] for c in cards}),
+        "count": len(cards),
+        "cards": cards,
+    }

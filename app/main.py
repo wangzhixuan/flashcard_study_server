@@ -6,7 +6,14 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .db import get_db, init_db
-from .schemas import ImportResult, ListCreate, ListDetail, ListSummary, ListUpdate
+from .schemas import (
+    DeckCards,
+    ImportResult,
+    ListCreate,
+    ListDetail,
+    ListSummary,
+    ListUpdate,
+)
 from .services import csv_import
 from .services import lists as lists_service
 
@@ -76,6 +83,21 @@ async def api_import_new_list(
 def api_get_list(list_id: int) -> dict:
     with get_db() as conn:
         result = lists_service.get_list(conn, list_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="List not found")
+    return result
+
+
+@app.get("/api/lists/{list_id}/cards", response_model=DeckCards)
+def api_get_cards(list_id: int, decks: str | None = None) -> dict:
+    deck_indices: list[int] | None = None
+    if decks:
+        try:
+            deck_indices = [int(part) for part in decks.split(",") if part.strip()]
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid decks parameter")
+    with get_db() as conn:
+        result = lists_service.get_cards(conn, list_id, deck_indices)
     if result is None:
         raise HTTPException(status_code=404, detail="List not found")
     return result

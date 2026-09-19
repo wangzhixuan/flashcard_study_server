@@ -290,13 +290,21 @@ async function renderListDetail(listId) {
 
   const decks = el("div", {});
   for (const deck of list.decks) {
+    const studyBtn = el("button", { class: "btn", text: "Study" });
+    studyBtn.addEventListener("click", () => renderStudy(listId, [deck.index]));
     decks.append(
       el("div", { class: "deck-row" }, [
         el("span", { text: `Deck ${deck.index}` }),
-        el("span", { class: "muted", text: `${deck.word_count} words` }),
+        el("span", { class: "deck-actions" }, [
+          el("span", { class: "muted", text: `${deck.word_count} words` }),
+          studyBtn,
+        ]),
       ])
     );
   }
+
+  const studyAllBtn = el("button", { class: "btn primary", text: "Study all" });
+  studyAllBtn.addEventListener("click", () => renderStudy(listId, null));
 
   const rows = list.words.map((word) =>
     el("tr", {}, [
@@ -327,10 +335,150 @@ async function renderListDetail(listId) {
     ]),
     el("div", { class: "section-title", text: "Manage" }),
     manage,
-    el("div", { class: "section-title", text: "Decks" }),
+    el("div", { class: "toolbar" }, [
+      el("div", { class: "section-title", text: "Decks" }),
+      studyAllBtn,
+    ]),
     decks,
     el("div", { class: "section-title", text: "Words" }),
     table
+  );
+}
+
+/* ------------------------------------------------------------ Study -- */
+
+async function renderStudy(listId, deckList) {
+  app.replaceChildren(el("p", { class: "muted", text: "Loading…" }));
+
+  const query = deckList && deckList.length ? `?decks=${deckList.join(",")}` : "";
+  let data;
+  try {
+    data = await api(`/api/lists/${listId}/cards${query}`);
+  } catch (err) {
+    renderError(err);
+    return;
+  }
+
+  if (data.count === 0) {
+    app.replaceChildren(
+      backButton("← Back to list", () => renderListDetail(listId)),
+      el("p", { class: "muted", text: "This selection has no words." })
+    );
+    return;
+  }
+
+  const deckLabel =
+    deckList && deckList.length
+      ? deckList.length === 1
+        ? `Deck ${deckList[0]}`
+        : `Decks ${deckList.join(", ")}`
+      : "All decks";
+
+  const state = {
+    cards: data.cards,
+    order: data.cards.map((_, index) => index),
+    pos: 0,
+    flipped: false,
+  };
+
+  const termEl = el("div", { class: "card-text" });
+  const defEl = el("div", { class: "card-text" });
+  const front = el("div", { class: "card-face front" }, [
+    el("span", { class: "face-label", text: "term" }),
+    termEl,
+  ]);
+  const back = el("div", { class: "card-face back" }, [
+    el("span", { class: "face-label", text: "definition" }),
+    defEl,
+  ]);
+  const flashcard = el("div", { class: "flashcard", role: "button", tabindex: "0" }, [
+    el("div", { class: "flashcard-inner" }, [front, back]),
+  ]);
+
+  const counter = el("span", { class: "counter" });
+  const deckTag = el("span", { text: deckLabel });
+
+  const prevBtn = el("button", { class: "btn", text: "← Prev" });
+  const flipBtn = el("button", { class: "btn", text: "Flip" });
+  const nextBtn = el("button", { class: "btn", text: "Next →" });
+  const shuffleBtn = el("button", { class: "btn", text: "Shuffle" });
+
+  function currentCard() {
+    return state.cards[state.order[state.pos]];
+  }
+
+  function update() {
+    const card = currentCard();
+    termEl.textContent = card.term;
+    defEl.textContent = card.definition;
+    counter.textContent = `${state.pos + 1} / ${state.order.length}`;
+    flashcard.classList.toggle("flipped", state.flipped);
+    prevBtn.disabled = state.pos === 0;
+    nextBtn.disabled = state.pos === state.order.length - 1;
+  }
+
+  function flip() {
+    state.flipped = !state.flipped;
+    update();
+  }
+
+  function go(delta) {
+    const target = state.pos + delta;
+    if (target < 0 || target >= state.order.length) return;
+    state.pos = target;
+    state.flipped = false;
+    update();
+  }
+
+  function shuffle() {
+    const order = state.order;
+    for (let i = order.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [order[i], order[j]] = [order[j], order[i]];
+    }
+    state.pos = 0;
+    state.flipped = false;
+    update();
+  }
+
+  flashcard.addEventListener("click", flip);
+  flashcard.addEventListener("keydown", (event) => {
+    if (event.key === " " || event.key === "Enter") {
+      event.preventDefault();
+      flip();
+    }
+  });
+  prevBtn.addEventListener("click", () => go(-1));
+  nextBtn.addEventListener("click", () => go(1));
+  flipBtn.addEventListener("click", flip);
+  shuffleBtn.addEventListener("click", shuffle);
+
+  function onKey(event) {
+    if (!flashcard.isConnected) {
+      document.removeEventListener("keydown", onKey);
+      return;
+    }
+    if (event.key === "ArrowLeft") go(-1);
+    else if (event.key === "ArrowRight") go(1);
+    else if (event.key === " ") {
+      event.preventDefault();
+      flip();
+    }
+  }
+  document.addEventListener("keydown", onKey);
+
+  update();
+
+  app.replaceChildren(
+    backButton("← Back to list", () => renderListDetail(listId)),
+    el("h2", { text: data.name }),
+    el("div", { class: "study-meta" }, [deckTag, counter]),
+    flashcard,
+    el("div", { class: "study-controls" }, [prevBtn, flipBtn, nextBtn, shuffleBtn]),
+    el("p", {
+      class: "muted hint",
+      text: "Click the card or press Space to flip · ← / → to navigate",
+    })
   );
 }
 

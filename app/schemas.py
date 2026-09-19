@@ -48,3 +48,19 @@ class ImportResult(BaseModel):
     list: ListSummary
     imported: int
     skipped: int = 0
+
+
+class Card(BaseModel):
+    id: int
+    term: str
+    definition: str
+    deck_index: int
+
+
+class DeckCards(BaseModel):
+    list_id: int
+    name: str
+    deck_size: int
+    decks: list[int]
+    count: int
+    cards: list[Card]
