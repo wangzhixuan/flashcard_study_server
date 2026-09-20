@@ -144,3 +144,22 @@ class ListProgressDetail(BaseModel):
     list: ListProgress
     decks: list[DeckProgress]
     recent: list[TestRecord]
+
+
+class DeckScorePoint(BaseModel):
+    score: float
+    correct: int
+    total: int
+    created_at: str
+
+
+class DeckProgressEntry(ProgressSummary):
+    list_id: int
+    list_name: str
+    deck_index: int
+    word_count: int
+    history: list[DeckScorePoint]
+
+
+class DeckOverview(BaseModel):
+    decks: list[DeckProgressEntry]

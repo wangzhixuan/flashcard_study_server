@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from .db import get_db, init_db
 from .schemas import (
     DeckCards,
+    DeckOverview,
     GeneratedTest,
     ImportResult,
     ListCreate,
@@ -198,6 +199,12 @@ def api_list_progress(list_id: int) -> dict:
     if result is None:
         raise HTTPException(status_code=404, detail="List not found")
     return result
+
+
+@app.get("/api/progress/decks", response_model=DeckOverview)
+def api_deck_progress(list_id: int | None = None) -> dict:
+    with get_db() as conn:
+        return progress_service.deck_overview(conn, list_id)
 
 
 @app.get("/")

@@ -92,3 +92,48 @@ def list_detail(conn: sqlite3.Connection, list_id: int) -> dict | None:
         **_aggregate(tests),
     }
     return {"list": list_progress, "decks": decks, "recent": tests[:10]}
+
+
+def deck_overview(conn: sqlite3.Connection, list_id: int | None = None) -> dict:
+    name_rows = conn.execute("SELECT id, name FROM lists ORDER BY id").fetchall()
+    names = {row["id"]: row["name"] for row in name_rows}
+
+    sql = (
+        "SELECT list_id, deck_index, COUNT(*) AS word_count FROM words "
+        "WHERE 1 = 1"
+    )
+    params: list[int] = []
+    if list_id is not None:
+        sql += " AND list_id = ?"
+        params.append(list_id)
+    sql += " GROUP BY list_id, deck_index ORDER BY list_id, deck_index"
+    word_rows = conn.execute(sql, params).fetchall()
+
+    tests = quiz.list_results(conn, list_id)
+    buckets: dict[tuple[int, int], list[dict]] = {}
+    for test in tests:
+        for deck_index in test["decks"]:
+            buckets.setdefault((test["list_id"], deck_index), []).append(test)
+
+    decks = []
+    for row in word_rows:
+        records = buckets.get((row["list_id"], row["deck_index"]), [])
+        decks.append(
+            {
+                "list_id": row["list_id"],
+                "list_name": names.get(row["list_id"], ""),
+                "deck_index": row["deck_index"],
+                "word_count": row["word_count"],
+                **_aggregate(records),
+                "history": [
+                    {
+                        "score": (r["correct"] / r["total"]) if r["total"] else 0.0,
+                        "correct": r["correct"],
+                        "total": r["total"],
+                        "created_at": r["created_at"],
+                    }
+                    for r in reversed(records)
+                ],
+            }
+        )
+    return {"decks": decks}

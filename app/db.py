@@ -1,10 +1,11 @@
+import os
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
-DB_PATH = DATA_DIR / "app.db"
+DB_PATH = Path(os.environ.get("FLASHCARD_DB") or (DATA_DIR / "app.db"))
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS lists (
@@ -40,7 +41,7 @@ CREATE INDEX IF NOT EXISTS idx_tests_list ON tests(list_id);
 
 
 def connect() -> sqlite3.Connection:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")

@@ -363,3 +363,32 @@ table.words td.deck { color: var(--muted); width: 4rem; }
 .metric { display: flex; flex-direction: column; align-items: flex-end; min-width: 3rem; }
 .metric b { font-size: 1.05rem; }
 .metric .muted { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; }
+
+.score-bar { display: flex; gap: 3px; }
+.score-bar .seg {
+  width: 20px;
+  height: 12px;
+  border-radius: 3px;
+  background: var(--border);
+}
+.score-bar .seg.empty { background: var(--panel-2); border: 1px solid var(--border); }
+
+.swatch {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+}
+
+.chart-wrap {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.75rem;
+  margin-bottom: 1rem;
+}
+.line-chart { width: 100%; height: auto; display: block; }
+.line-chart .grid { stroke: var(--border); stroke-width: 1; }
+.line-chart .axis-label { fill: var(--muted); font-size: 10px; }
+.line-chart .line { fill: none; stroke: var(--accent); stroke-width: 2; }
+.line-chart .dot { stroke: var(--panel); stroke-width: 1.5; }
