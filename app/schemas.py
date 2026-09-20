@@ -110,3 +110,37 @@ class TestRecord(BaseModel):
     correct: int
     score: float
     created_at: str
+
+
+class ProgressSummary(BaseModel):
+    tests: int
+    total: int
+    correct: int
+    score: float
+    best: float
+    last_score: float
+    last_at: str | None = None
+
+
+class ListProgress(ProgressSummary):
+    list_id: int
+    name: str
+    deck_size: int
+    word_count: int
+    deck_count: int
+
+
+class ProgressOverview(BaseModel):
+    overall: ProgressSummary
+    lists: list[ListProgress]
+
+
+class DeckProgress(ProgressSummary):
+    deck_index: int
+    word_count: int
+
+
+class ListProgressDetail(BaseModel):
+    list: ListProgress
+    decks: list[DeckProgress]
+    recent: list[TestRecord]

@@ -86,6 +86,7 @@ function renderError(err) {
 /* ---------------------------------------------------------------- Lists -- */
 
 async function renderLists() {
+  setActiveNav("lists");
   app.replaceChildren(el("p", { class: "muted", text: "Loading…" }));
   let lists;
   try {
@@ -716,5 +717,165 @@ function renderTestResults(result, review, listId) {
     el("div", { class: "actions" }, [retakeBtn, studyBtn])
   );
 }
+
+/* ---------------------------------------------------------- Progress -- */
+
+function setActiveNav(view) {
+  document.getElementById("nav-lists").classList.toggle("active", view === "lists");
+  document.getElementById("nav-progress").classList.toggle("active", view === "progress");
+}
+
+function fmtScore(summary) {
+  return summary.tests ? `${Math.round(summary.score * 100)}%` : "—";
+}
+
+function metric(value, label) {
+  return el("span", { class: "metric" }, [
+    el("b", { text: value }),
+    el("span", { class: "muted", text: label }),
+  ]);
+}
+
+async function renderProgress() {
+  setActiveNav("progress");
+  app.replaceChildren(el("p", { class: "muted", text: "Loading…" }));
+  let data;
+  try {
+    data = await api("/api/progress");
+  } catch (err) {
+    renderError(err);
+    return;
+  }
+
+  const overall = data.overall;
+  const summary = el("div", { class: "panel result-summary" }, [
+    el("div", { class: "score", text: overall.tests ? `${Math.round(overall.score * 100)}%` : "—" }),
+    el("div", {
+      class: "muted",
+      text: overall.tests
+        ? `${overall.correct} / ${overall.total} correct across ${overall.tests} test${overall.tests === 1 ? "" : "s"}`
+        : "No tests taken yet.",
+    }),
+  ]);
+
+  const rows = data.lists.map((list) => {
+    const row = el("div", { class: "progress-row" }, [
+      el("div", { class: "progress-main" }, [
+        el("div", { class: "progress-name", text: list.name }),
+        el("div", { class: "muted", text: `${list.word_count} words · ${list.deck_count} decks` }),
+      ]),
+      el("div", { class: "progress-stats" }, [
+        metric(fmtScore(list), "avg"),
+        metric(list.tests ? String(list.tests) : "—", "tests"),
+        metric(list.tests ? `${Math.round(list.best * 100)}%` : "—", "best"),
+      ]),
+    ]);
+    row.addEventListener("click", () => renderListProgress(list.list_id));
+    return row;
+  });
+
+  app.replaceChildren(
+    el("div", { class: "section-title", text: "Overall" }),
+    summary,
+    el("div", { class: "section-title", text: "By list" }),
+    data.lists.length
+      ? el("div", { class: "progress-list" }, rows)
+      : el("p", { class: "muted", text: "No lists yet." })
+  );
+}
+
+async function renderListProgress(listId) {
+  setActiveNav("progress");
+  app.replaceChildren(el("p", { class: "muted", text: "Loading…" }));
+  let data;
+  try {
+    data = await api(`/api/progress/lists/${listId}`);
+  } catch (err) {
+    renderError(err);
+    return;
+  }
+
+  const list = data.list;
+  const summary = el("div", { class: "panel result-summary" }, [
+    el("div", { class: "score", text: fmtScore(list) }),
+    el("div", {
+      class: "muted",
+      text: list.tests
+        ? `${list.correct} / ${list.total} correct across ${list.tests} test${list.tests === 1 ? "" : "s"}`
+        : "No tests yet.",
+    }),
+  ]);
+
+  const deckRows = data.decks.length
+    ? data.decks.map((deck) =>
+        el("tr", {}, [
+          el("td", { text: `Deck ${deck.deck_index} (${deck.word_count}w)` }),
+          el("td", { text: deck.tests || "—" }),
+          el("td", { text: fmtScore(deck) }),
+          el("td", { text: deck.tests ? `${Math.round(deck.best * 100)}%` : "—" }),
+          el("td", { text: deck.tests ? `${Math.round(deck.last_score * 100)}%` : "—" }),
+        ])
+      )
+    : [el("tr", {}, [el("td", { colspan: "5", class: "muted", text: "No tests on this list yet." })])];
+
+  const deckTable = el("table", { class: "words" }, [
+    el("thead", {}, [
+      el("tr", {}, [
+        el("th", { text: "Deck" }),
+        el("th", { text: "Tests" }),
+        el("th", { text: "Avg" }),
+        el("th", { text: "Best" }),
+        el("th", { text: "Last" }),
+      ]),
+    ]),
+    el("tbody", {}, deckRows),
+  ]);
+
+  const recentRows = data.recent.map((test) =>
+    el("tr", {}, [
+      el("td", { text: test.created_at }),
+      el("td", { text: test.decks.length ? test.decks.map((d) => `D${d}`).join(", ") : "all" }),
+      el("td", { text: String(test.question_types.length) }),
+      el("td", { text: `${test.correct} / ${test.total}` }),
+      el("td", { text: `${Math.round(test.score * 100)}%` }),
+    ])
+  );
+
+  const recentTable = el("table", { class: "words" }, [
+    el("thead", {}, [
+      el("tr", {}, [
+        el("th", { text: "When" }),
+        el("th", { text: "Decks" }),
+        el("th", { text: "Types" }),
+        el("th", { text: "Score" }),
+        el("th", { text: "%" }),
+      ]),
+    ]),
+    el("tbody", {},
+      recentRows.length
+        ? recentRows
+        : [el("tr", {}, [el("td", { colspan: "5", class: "muted", text: "No tests yet." })])]
+    ),
+  ]);
+
+  const studyBtn = el("button", { class: "btn", text: "Study all" });
+  studyBtn.addEventListener("click", () => renderStudy(listId, null));
+  const testBtn = el("button", { class: "btn primary", text: "Test" });
+  testBtn.addEventListener("click", () => renderTestSetup(listId));
+
+  app.replaceChildren(
+    backButton("← Progress", renderProgress),
+    el("h2", { text: list.name }),
+    summary,
+    el("div", { class: "actions" }, [studyBtn, testBtn]),
+    el("div", { class: "section-title", text: "Decks" }),
+    deckTable,
+    el("div", { class: "section-title", text: "Recent tests" }),
+    recentTable
+  );
+}
+
+document.getElementById("nav-lists").addEventListener("click", renderLists);
+document.getElementById("nav-progress").addEventListener("click", renderProgress);
 
 renderLists();

@@ -12,14 +12,17 @@ from .schemas import (
     ImportResult,
     ListCreate,
     ListDetail,
+    ListProgressDetail,
     ListSummary,
     ListUpdate,
+    ProgressOverview,
     TestCreate,
     TestRecord,
     TestResultCreate,
 )
 from .services import csv_import
 from .services import lists as lists_service
+from .services import progress as progress_service
 from .services import quiz
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -180,6 +183,21 @@ def api_record_result(payload: TestResultCreate) -> dict:
 def api_list_results(list_id: int | None = None) -> list[dict]:
     with get_db() as conn:
         return quiz.list_results(conn, list_id)
+
+
+@app.get("/api/progress", response_model=ProgressOverview)
+def api_progress() -> dict:
+    with get_db() as conn:
+        return progress_service.overview(conn)
+
+
+@app.get("/api/progress/lists/{list_id}", response_model=ListProgressDetail)
+def api_list_progress(list_id: int) -> dict:
+    with get_db() as conn:
+        result = progress_service.list_detail(conn, list_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="List not found")
+    return result
 
 
 @app.get("/")
