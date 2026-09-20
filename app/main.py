@@ -47,6 +47,17 @@ def _parse_header_flag(value: str) -> bool | None:
     return None
 
 
+def _parse_bool(value: str | None, default: bool) -> bool:
+    if value is None:
+        return default
+    value = value.strip().lower()
+    if value in ("true", "1", "yes", "on"):
+        return True
+    if value in ("false", "0", "no", "off"):
+        return False
+    return default
+
+
 async def _pairs_from_upload(file: UploadFile, has_header: str) -> list[tuple[str, str]]:
     raw = await file.read()
     text = raw.decode("utf-8-sig", errors="replace")
@@ -80,10 +91,13 @@ async def api_import_new_list(
     name: str = Form(...),
     deck_size: int = Form(20),
     has_header: str = Form("auto"),
+    shuffle: str = Form("true"),
 ) -> dict:
     pairs = await _pairs_from_upload(file, has_header)
     with get_db() as conn:
-        list_id = lists_service.create_list(conn, name, pairs, max(1, deck_size))
+        list_id = lists_service.create_list(
+            conn, name, pairs, max(1, deck_size), shuffle=_parse_bool(shuffle, True)
+        )
         summary = lists_service.get_summary(conn, list_id)
     return {"list": summary, "imported": len(pairs), "skipped": 0}
 
@@ -116,10 +130,23 @@ def api_get_cards(list_id: int, decks: str | None = None) -> dict:
 def api_update_list(list_id: int, payload: ListUpdate) -> dict:
     with get_db() as conn:
         ok = lists_service.update_list(
-            conn, list_id, name=payload.name, deck_size=payload.deck_size
+            conn,
+            list_id,
+            name=payload.name,
+            deck_size=payload.deck_size,
+            shuffle=payload.shuffle,
         )
         if not ok:
             raise HTTPException(status_code=404, detail="List not found")
+        return lists_service.get_summary(conn, list_id)
+
+
+@app.post("/api/lists/{list_id}/shuffle", response_model=ListSummary)
+def api_shuffle_list(list_id: int) -> dict:
+    with get_db() as conn:
+        if lists_service.get_summary(conn, list_id) is None:
+            raise HTTPException(status_code=404, detail="List not found")
+        lists_service.shuffle_words(conn, list_id)
         return lists_service.get_summary(conn, list_id)
 
 
@@ -128,12 +155,15 @@ async def api_import_into_list(
     list_id: int,
     file: UploadFile = File(...),
     has_header: str = Form("auto"),
+    shuffle: str = Form("true"),
 ) -> dict:
     pairs = await _pairs_from_upload(file, has_header)
     with get_db() as conn:
         if lists_service.get_summary(conn, list_id) is None:
             raise HTTPException(status_code=404, detail="List not found")
-        imported = lists_service.append_words(conn, list_id, pairs)
+        imported = lists_service.append_words(
+            conn, list_id, pairs, shuffle=_parse_bool(shuffle, True)
+        )
         summary = lists_service.get_summary(conn, list_id)
     return {"list": summary, "imported": imported, "skipped": 0}
 

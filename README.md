@@ -10,8 +10,11 @@ database, and a no-build vanilla-JS single-page UI.
 ## Features
 
 1. **Lists & decks** — import a list from CSV, then split it into persistent,
-   fixed-size decks (e.g. a 200-word list into 10 decks of 20). Rename lists,
-   change deck size (words are re-decked), append more words, or delete.
+   fixed-size decks (e.g. a 200-word list into 10 decks of 20). Words are
+   shuffled across decks by default so each deck is a random mix; untick the
+   option to keep the CSV order instead. You can also re-shuffle at any time,
+   rename lists, change deck size (words are re-decked), append more words, or
+   delete.
 2. **Study** — flip through flashcards for a deck (or all decks), with
    next/previous, flip, shuffle, and keyboard shortcuts.
 3. **Test** — pick one or more decks, choose question types, and set the number
@@ -104,8 +107,9 @@ data/app.db            SQLite database (git-ignored)
 | POST | `/api/lists` | Create an empty list |
 | POST | `/api/lists/import` | Create a list from an uploaded CSV |
 | GET | `/api/lists/{id}` | List detail: words + deck summary |
-| PATCH | `/api/lists/{id}` | Rename and/or change deck size (re-decks) |
-| POST | `/api/lists/{id}/import` | Append words from a CSV |
+| PATCH | `/api/lists/{id}` | Rename and/or change deck size (`shuffle` to re-randomize) |
+| POST | `/api/lists/{id}/shuffle` | Randomly reassign words across decks |
+| POST | `/api/lists/{id}/import` | Append words from a CSV (`shuffle` to re-randomize) |
 | DELETE | `/api/lists/{id}` | Delete a list and its words/tests |
 | GET | `/api/lists/{id}/cards` | Cards for `?decks=1,2` (omit for all) |
 | POST | `/api/tests/generate` | Generate a test (questions are not stored) |

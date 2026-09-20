@@ -18,7 +18,7 @@ def seed() -> int | None:
             print(f"Seed list '{SEED_NAME}' already exists (id={existing['id']}). Skipping.")
             return existing["id"]
         list_id = lists_service.create_list(
-            conn, SEED_NAME, pairs, deck_size=SEED_DECK_SIZE
+            conn, SEED_NAME, pairs, deck_size=SEED_DECK_SIZE, shuffle=False
         )
     print(
         f"Seeded list '{SEED_NAME}' (id={list_id}) with {len(pairs)} words, "

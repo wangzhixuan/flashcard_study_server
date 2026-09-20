@@ -42,6 +42,7 @@ class ListCreate(BaseModel):
 class ListUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1)
     deck_size: int | None = Field(default=None, ge=1)
+    shuffle: bool = False
 
 
 class ImportResult(BaseModel):

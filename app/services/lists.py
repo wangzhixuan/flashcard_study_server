@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import random
 import sqlite3
 from typing import Iterable
 
@@ -42,14 +43,18 @@ def create_list(
     name: str,
     pairs: Iterable[tuple[str, str]],
     deck_size: int = 20,
+    shuffle: bool = True,
 ) -> int:
     deck_size = max(1, deck_size)
+    items = list(pairs)
+    if shuffle:
+        random.shuffle(items)
     cur = conn.execute(
         "INSERT INTO lists (name, deck_size) VALUES (?, ?)",
         (name, deck_size),
     )
     list_id = cur.lastrowid
-    _insert_words(conn, list_id, pairs, start_position=0, deck_size=deck_size)
+    _insert_words(conn, list_id, items, start_position=0, deck_size=deck_size)
     return list_id
 
 
@@ -61,8 +66,31 @@ def _next_position(conn: sqlite3.Connection, list_id: int) -> int:
     return row["p"] + 1
 
 
+def _ordered_ids(conn: sqlite3.Connection, list_id: int) -> list[int]:
+    rows = conn.execute(
+        "SELECT id FROM words WHERE list_id = ? ORDER BY position, id",
+        (list_id,),
+    ).fetchall()
+    return [row["id"] for row in rows]
+
+
+def _apply_order(
+    conn: sqlite3.Connection, ids: list[int], deck_size: int
+) -> None:
+    conn.executemany(
+        "UPDATE words SET position = ?, deck_index = ? WHERE id = ?",
+        [
+            (pos, deck_index_for(pos, deck_size), word_id)
+            for pos, word_id in enumerate(ids)
+        ],
+    )
+
+
 def append_words(
-    conn: sqlite3.Connection, list_id: int, pairs: Iterable[tuple[str, str]]
+    conn: sqlite3.Connection,
+    list_id: int,
+    pairs: Iterable[tuple[str, str]],
+    shuffle: bool = False,
 ) -> int:
     row = conn.execute(
         "SELECT deck_size FROM lists WHERE id = ?", (list_id,)
@@ -70,24 +98,34 @@ def append_words(
     if row is None:
         raise KeyError("List not found")
     start = _next_position(conn, list_id)
-    return _insert_words(conn, list_id, pairs, start, row["deck_size"])
+    count = _insert_words(conn, list_id, pairs, start, row["deck_size"])
+    if shuffle and count:
+        shuffle_words(conn, list_id)
+    return count
 
 
-def set_deck_size(conn: sqlite3.Connection, list_id: int, deck_size: int) -> int:
+def set_deck_size(
+    conn: sqlite3.Connection, list_id: int, deck_size: int, shuffle: bool = False
+) -> int:
     deck_size = max(1, deck_size)
     conn.execute("UPDATE lists SET deck_size = ? WHERE id = ?", (deck_size, list_id))
-    rows = conn.execute(
-        "SELECT id FROM words WHERE list_id = ? ORDER BY position, id",
-        (list_id,),
-    ).fetchall()
-    conn.executemany(
-        "UPDATE words SET position = ?, deck_index = ? WHERE id = ?",
-        [
-            (pos, deck_index_for(pos, deck_size), row["id"])
-            for pos, row in enumerate(rows)
-        ],
-    )
-    return len(rows)
+    ids = _ordered_ids(conn, list_id)
+    if shuffle:
+        random.shuffle(ids)
+    _apply_order(conn, ids, deck_size)
+    return len(ids)
+
+
+def shuffle_words(conn: sqlite3.Connection, list_id: int) -> int:
+    row = conn.execute(
+        "SELECT deck_size FROM lists WHERE id = ?", (list_id,)
+    ).fetchone()
+    if row is None:
+        raise KeyError("List not found")
+    ids = _ordered_ids(conn, list_id)
+    random.shuffle(ids)
+    _apply_order(conn, ids, row["deck_size"])
+    return len(ids)
 
 
 def update_list(
@@ -95,13 +133,16 @@ def update_list(
     list_id: int,
     name: str | None = None,
     deck_size: int | None = None,
+    shuffle: bool = False,
 ) -> bool:
     if conn.execute("SELECT 1 FROM lists WHERE id = ?", (list_id,)).fetchone() is None:
         return False
     if name is not None:
         conn.execute("UPDATE lists SET name = ? WHERE id = ?", (name, list_id))
     if deck_size is not None:
-        set_deck_size(conn, list_id, deck_size)
+        set_deck_size(conn, list_id, deck_size, shuffle=shuffle)
+    elif shuffle:
+        shuffle_words(conn, list_id)
     return True
 
 

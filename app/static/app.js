@@ -153,12 +153,14 @@ function renderNewList() {
   const submit = el("button", { class: "btn primary", text: "Create list" });
   const cancel = el("button", { class: "btn", text: "Cancel" });
   const error = el("p", { class: "error hidden" });
+  const shuffle = checkboxRow("true", "Shuffle words into decks (recommended)", true);
 
   const form = el("form", { class: "form" }, [
     field("List name", name),
     field("Deck size (words per deck)", deckSize),
     field("CSV file (term, definition)", file),
     field("CSV header", headerSel),
+    el("div", { class: "field" }, [shuffle.node]),
     el("div", { class: "actions" }, [submit, cancel]),
     error,
   ]);
@@ -173,6 +175,7 @@ function renderNewList() {
     form_data.append("name", name.value.trim());
     form_data.append("deck_size", deckSize.value || "20");
     form_data.append("has_header", headerSel.value);
+    form_data.append("shuffle", shuffle.cb.checked ? "true" : "false");
     form_data.append("file", file.files[0]);
 
     submit.disabled = true;
@@ -229,13 +232,28 @@ async function renderListDetail(listId) {
     min: "1",
     value: String(list.deck_size),
   });
+  const deckShuffle = checkboxRow("true", "shuffle", true);
   const deckBtn = el("button", { class: "btn", text: "Apply & re-deck" });
   deckBtn.addEventListener("click", async () => {
     const size = parseInt(deckInput.value, 10);
     if (!size || size < 1) return notify("Deck size must be at least 1", "error");
     try {
-      await apiSend("PATCH", `/api/lists/${listId}`, { deck_size: size });
+      await apiSend("PATCH", `/api/lists/${listId}`, {
+        deck_size: size,
+        shuffle: deckShuffle.cb.checked,
+      });
       notify("Decks recalculated");
+      renderListDetail(listId);
+    } catch (err) {
+      notify(err.message, "error");
+    }
+  });
+
+  const shuffleBtn = el("button", { class: "btn", text: "Shuffle decks" });
+  shuffleBtn.addEventListener("click", async () => {
+    try {
+      await apiSend("POST", `/api/lists/${listId}/shuffle`);
+      notify("Decks shuffled");
       renderListDetail(listId);
     } catch (err) {
       notify(err.message, "error");
@@ -248,11 +266,13 @@ async function renderListDetail(listId) {
     option("true", "Has header row"),
     option("false", "No header row"),
   ]);
+  const addShuffle = checkboxRow("true", "shuffle", true);
   const addBtn = el("button", { class: "btn", text: "Import CSV" });
   addBtn.addEventListener("click", async () => {
     if (!addFile.files.length) return notify("Choose a CSV file first", "error");
     const form_data = new FormData();
     form_data.append("has_header", addHeader.value);
+    form_data.append("shuffle", addShuffle.cb.checked ? "true" : "false");
     form_data.append("file", addFile.files[0]);
     try {
       const result = await apiUpload(`/api/lists/${listId}/import`, form_data);
@@ -284,12 +304,19 @@ async function renderListDetail(listId) {
     el("div", { class: "row" }, [
       el("span", { class: "row-label", text: "Deck size" }),
       deckInput,
+      deckShuffle.node,
       deckBtn,
+    ]),
+    el("div", { class: "row" }, [
+      el("span", { class: "row-label", text: "Deck order" }),
+      shuffleBtn,
+      el("span", { class: "muted", text: "Randomly spread words across decks." }),
     ]),
     el("div", { class: "row" }, [
       el("span", { class: "row-label", text: "Append words" }),
       addFile,
       addHeader,
+      addShuffle.node,
       addBtn,
     ]),
     el("div", { class: "row" }, [
@@ -587,9 +614,9 @@ const QUESTION_TYPE_DEFS = [
 
 const QUESTION_TYPE_LABELS = Object.fromEntries(QUESTION_TYPE_DEFS);
 
-function checkboxRow(value, labelText) {
+function checkboxRow(value, labelText, checked = true) {
   const cb = el("input", { type: "checkbox", value });
-  cb.checked = true;
+  cb.checked = checked;
   return {
     cb,
     node: el("label", { class: "check" }, [cb, el("span", { text: labelText })]),
