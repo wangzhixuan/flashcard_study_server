@@ -306,6 +306,9 @@ async function renderListDetail(listId) {
   const studyAllBtn = el("button", { class: "btn primary", text: "Study all" });
   studyAllBtn.addEventListener("click", () => renderStudy(listId, null));
 
+  const testBtn = el("button", { class: "btn primary", text: "Test" });
+  testBtn.addEventListener("click", () => renderTestSetup(listId));
+
   const rows = list.words.map((word) =>
     el("tr", {}, [
       el("td", { class: "deck", text: `${word.deck_index}` }),
@@ -337,7 +340,7 @@ async function renderListDetail(listId) {
     manage,
     el("div", { class: "toolbar" }, [
       el("div", { class: "section-title", text: "Decks" }),
-      studyAllBtn,
+      el("div", { class: "toolbar-actions" }, [studyAllBtn, testBtn]),
     ]),
     decks,
     el("div", { class: "section-title", text: "Words" }),
@@ -479,6 +482,227 @@ async function renderStudy(listId, deckList) {
       class: "muted hint",
       text: "Click the card or press Space to flip · ← / → to navigate",
     })
+  );
+}
+
+/* -------------------------------------------------------------- Test -- */
+
+const QUESTION_TYPE_DEFS = [
+  ["word_to_def", "Word → correct definition"],
+  ["def_to_word", "Definition → correct word"],
+  ["pair_correct", "Pick the correct word–definition pair"],
+  ["pair_incorrect", "Spot the incorrect word–definition pair"],
+];
+
+const QUESTION_TYPE_LABELS = Object.fromEntries(QUESTION_TYPE_DEFS);
+
+function checkboxRow(value, labelText) {
+  const cb = el("input", { type: "checkbox", value });
+  cb.checked = true;
+  return {
+    cb,
+    node: el("label", { class: "check" }, [cb, el("span", { text: labelText })]),
+  };
+}
+
+async function renderTestSetup(listId) {
+  app.replaceChildren(el("p", { class: "muted", text: "Loading…" }));
+  let list;
+  try {
+    list = await api(`/api/lists/${listId}`);
+  } catch (err) {
+    renderError(err);
+    return;
+  }
+
+  if (list.word_count < 2) {
+    app.replaceChildren(
+      backButton("← Back to list", () => renderListDetail(listId)),
+      el("p", { class: "muted", text: "Add at least 2 words before creating a test." })
+    );
+    return;
+  }
+
+  const deckBoxes = list.decks.map((deck) => ({
+    index: deck.index,
+    ...checkboxRow(String(deck.index), `Deck ${deck.index} (${deck.word_count} words)`),
+  }));
+  const typeBoxes = QUESTION_TYPE_DEFS.map(([value, label]) => checkboxRow(value, label));
+
+  const countInput = el("input", {
+    type: "number",
+    class: "input narrow",
+    min: "1",
+    value: String(Math.min(list.word_count, 20)),
+  });
+
+  const error = el("p", { class: "error hidden" });
+  const startBtn = el("button", { class: "btn primary", text: "Start test" });
+  const cancelBtn = el("button", { class: "btn", text: "Cancel" });
+  cancelBtn.addEventListener("click", () => renderListDetail(listId));
+
+  startBtn.addEventListener("click", async () => {
+    error.className = "error hidden";
+    const decks = deckBoxes.filter((box) => box.cb.checked).map((box) => box.index);
+    const types = typeBoxes.filter((box) => box.cb.checked).map((box) => box.cb.value);
+    if (!decks.length) return showFormError(error, "Select at least one deck.");
+    if (!types.length) return showFormError(error, "Select at least one question type.");
+    const count = parseInt(countInput.value, 10) || undefined;
+
+    startBtn.disabled = true;
+    try {
+      const test = await apiSend("POST", "/api/tests", {
+        list_id: listId,
+        decks,
+        question_types: types,
+        count,
+      });
+      renderTestRun(test, listId);
+    } catch (err) {
+      showFormError(error, err.message);
+      startBtn.disabled = false;
+    }
+  });
+
+  app.replaceChildren(
+    backButton("← Back to list", () => renderListDetail(listId)),
+    el("h2", { text: `Test: ${list.name}` }),
+    el("div", { class: "panel" }, [
+      el("div", { class: "section-title", text: "Decks" }),
+      el("div", { class: "checks" }, deckBoxes.map((box) => box.node)),
+      el("div", { class: "section-title", text: "Question types" }),
+      el("div", { class: "checks" }, typeBoxes.map((box) => box.node)),
+      el("div", { class: "section-title", text: "Number of questions" }),
+      countInput,
+    ]),
+    el("div", { class: "actions" }, [startBtn, cancelBtn]),
+    error
+  );
+}
+
+function renderTestRun(test, listId) {
+  const state = { index: 0, answers: [] };
+
+  const progress = el("span", { class: "counter" });
+  const typeTag = el("span", { text: "" });
+  const promptEl = el("div", { class: "test-prompt" });
+  const optionsEl = el("div", { class: "options" });
+  const feedback = el("div", { class: "feedback hidden" });
+  const nextBtn = el("button", { class: "btn primary", text: "Next question" });
+  const quitBtn = backButton("← Quit test", () => renderListDetail(listId));
+
+  function renderQuestion() {
+    const question = test.questions[state.index];
+    progress.textContent = `Question ${state.index + 1} / ${test.questions.length}`;
+    typeTag.textContent = QUESTION_TYPE_LABELS[question.question_type] || question.question_type;
+    promptEl.textContent = question.prompt;
+    feedback.className = "feedback hidden";
+    feedback.textContent = "";
+    nextBtn.disabled = true;
+    nextBtn.textContent =
+      state.index === test.questions.length - 1 ? "Finish & see results" : "Next question";
+
+    optionsEl.replaceChildren(
+      ...question.options.map((option) => {
+        const btn = el("button", { class: "option", text: option.text });
+        btn.dataset.optionId = option.id;
+        btn.addEventListener("click", () => choose(option));
+        return btn;
+      })
+    );
+  }
+
+  function choose(option) {
+    const question = test.questions[state.index];
+    const isCorrect = option.id === question.correct_option_id;
+    for (const btn of optionsEl.children) {
+      btn.disabled = true;
+      if (btn.dataset.optionId === question.correct_option_id) btn.classList.add("correct");
+    }
+    if (!isCorrect) {
+      for (const btn of optionsEl.children) {
+        if (btn.dataset.optionId === option.id) btn.classList.add("wrong");
+      }
+    }
+    state.answers.push({ question_id: question.id, option_id: option.id });
+    feedback.textContent = isCorrect ? "Correct!" : "Incorrect";
+    feedback.className = `feedback ${isCorrect ? "ok" : "bad"}`;
+    nextBtn.disabled = false;
+    nextBtn.focus();
+  }
+
+  nextBtn.addEventListener("click", async () => {
+    if (state.index < test.questions.length - 1) {
+      state.index += 1;
+      renderQuestion();
+      return;
+    }
+    nextBtn.disabled = true;
+    try {
+      const result = await apiSend("POST", `/api/tests/${test.id}/submit`, {
+        answers: state.answers,
+      });
+      renderTestResults(result, test, listId);
+    } catch (err) {
+      notify(err.message, "error");
+      nextBtn.disabled = false;
+    }
+  });
+
+  renderQuestion();
+
+  app.replaceChildren(
+    quitBtn,
+    el("div", { class: "study-meta" }, [typeTag, progress]),
+    promptEl,
+    optionsEl,
+    el("div", { class: "test-footer" }, [nextBtn]),
+    feedback
+  );
+}
+
+function renderTestResults(result, test, listId) {
+  const pct = Math.round(result.score * 100);
+
+  const summary = el("div", { class: "panel result-summary" }, [
+    el("div", { class: "score", text: `${pct}%` }),
+    el("div", { class: "muted", text: `${result.correct} / ${result.total} correct` }),
+    el("div", { class: "muted", text: "Result saved." }),
+  ]);
+
+  const items = result.answers.map((answer) =>
+    el("div", { class: `review ${answer.is_correct ? "ok" : "bad"}` }, [
+      el("div", { class: "review-head" }, [
+        el("span", { class: "badge", text: answer.is_correct ? "✓" : "✗" }),
+        el("span", { text: answer.prompt }),
+      ]),
+      el("div", {
+        class: "review-line muted",
+        text: `Your answer: ${answer.chosen_text ?? "—"}`,
+      }),
+      ...(answer.is_correct
+        ? []
+        : [
+            el("div", {
+              class: "review-line",
+              text: `Correct: ${answer.correct_text ?? "—"}`,
+            }),
+          ]),
+    ])
+  );
+
+  const retakeBtn = el("button", { class: "btn primary", text: "New test" });
+  retakeBtn.addEventListener("click", () => renderTestSetup(listId));
+  const studyBtn = el("button", { class: "btn", text: "Study this list" });
+  studyBtn.addEventListener("click", () => renderStudy(listId, null));
+
+  app.replaceChildren(
+    backButton("← Back to list", () => renderListDetail(listId)),
+    el("h2", { text: `Results: ${test.name}` }),
+    summary,
+    el("div", { class: "section-title", text: "Review" }),
+    ...items,
+    el("div", { class: "actions" }, [retakeBtn, studyBtn])
   );
 }
 

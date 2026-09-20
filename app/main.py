@@ -13,9 +13,14 @@ from .schemas import (
     ListDetail,
     ListSummary,
     ListUpdate,
+    TestCreate,
+    TestPayload,
+    TestResult,
+    TestSubmit,
 )
 from .services import csv_import
 from .services import lists as lists_service
+from .services import quiz
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -135,6 +140,44 @@ def api_delete_list(list_id: int) -> Response:
         if not lists_service.delete_list(conn, list_id):
             raise HTTPException(status_code=404, detail="List not found")
     return Response(status_code=204)
+
+
+@app.post("/api/tests", response_model=TestPayload, status_code=201)
+def api_create_test(payload: TestCreate) -> dict:
+    try:
+        with get_db() as conn:
+            result = quiz.generate_test(
+                conn,
+                payload.list_id,
+                payload.decks,
+                payload.question_types,
+                payload.count,
+            )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if result is None:
+        raise HTTPException(status_code=404, detail="List not found")
+    return result
+
+
+@app.get("/api/tests/{test_id}", response_model=TestPayload)
+def api_get_test(test_id: int) -> dict:
+    with get_db() as conn:
+        result = quiz.get_test_payload(conn, test_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Test not found")
+    return result
+
+
+@app.post("/api/tests/{test_id}/submit", response_model=TestResult)
+def api_submit_test(test_id: int, payload: TestSubmit) -> dict:
+    with get_db() as conn:
+        result = quiz.grade_test(
+            conn, test_id, [answer.model_dump() for answer in payload.answers]
+        )
+    if result is None:
+        raise HTTPException(status_code=404, detail="Test not found")
+    return result
 
 
 @app.get("/")

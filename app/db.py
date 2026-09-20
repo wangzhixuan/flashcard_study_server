@@ -33,6 +33,19 @@ CREATE TABLE IF NOT EXISTS tests (
     created_at      TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS questions (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    test_id           INTEGER NOT NULL REFERENCES tests(id) ON DELETE CASCADE,
+    word_id           INTEGER NOT NULL REFERENCES words(id) ON DELETE CASCADE,
+    question_type     TEXT    NOT NULL,
+    prompt            TEXT    NOT NULL,
+    options_json      TEXT    NOT NULL,
+    correct_option_id TEXT    NOT NULL,
+    position          INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_questions_test ON questions(test_id);
+
 CREATE TABLE IF NOT EXISTS answers (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     test_id         INTEGER NOT NULL REFERENCES tests(id) ON DELETE CASCADE,

@@ -266,3 +266,62 @@ table.words td.deck { color: var(--muted); width: 4rem; }
   flex-wrap: wrap;
 }
 .hint { text-align: center; font-size: 0.8rem; margin-top: 0.85rem; }
+
+.toolbar-actions { display: flex; gap: 0.5rem; }
+
+.checks { display: flex; flex-direction: column; gap: 0.35rem; margin-bottom: 0.5rem; }
+.check { display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; cursor: pointer; }
+.check input { accent-color: var(--accent); }
+
+.test-prompt {
+  font-size: 1.35rem;
+  font-weight: 600;
+  margin: 0.5rem 0 1rem;
+  line-height: 1.35;
+}
+.options { display: flex; flex-direction: column; gap: 0.5rem; }
+.option {
+  text-align: left;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.option:hover:not(:disabled) { border-color: var(--accent); }
+.option:disabled { cursor: default; opacity: 0.9; }
+.option.correct { border-color: var(--ok); background: #14301f; }
+.option.wrong { border-color: #b34553; background: #2a1a20; }
+
+.feedback { margin-top: 0.85rem; font-size: 0.95rem; font-weight: 600; }
+.feedback.ok { color: var(--ok); }
+.feedback.bad { color: #ff9aa6; }
+.test-footer { margin-top: 1rem; display: flex; justify-content: flex-end; }
+
+.result-summary {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  margin-bottom: 1rem;
+}
+.result-summary .score { font-size: 2.5rem; font-weight: 700; }
+
+.review {
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  border-radius: 8px;
+  padding: 0.6rem 0.85rem;
+  margin-bottom: 0.5rem;
+  background: var(--panel);
+}
+.review.ok { border-left-color: var(--ok); }
+.review.bad { border-left-color: #b34553; }
+.review-head { display: flex; gap: 0.5rem; align-items: baseline; }
+.review-head .badge { font-weight: 700; }
+.review.ok .badge { color: var(--ok); }
+.review.bad .badge { color: #ff9aa6; }
+.review-line { font-size: 0.85rem; margin-top: 0.2rem; }
