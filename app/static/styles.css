@@ -392,3 +392,46 @@ table.words td.deck { color: var(--muted); width: 4rem; }
 .line-chart .axis-label { fill: var(--muted); font-size: 10px; }
 .line-chart .line { fill: none; stroke: var(--accent); stroke-width: 2; }
 .line-chart .dot { stroke: var(--panel); stroke-width: 1.5; }
+
+.game-hud {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0.5rem 0 0.6rem;
+}
+.hud-item { font-size: 0.85rem; color: var(--muted); }
+.hud-item-right { font-size: 1rem; color: #ff9aa6; letter-spacing: 0.1em; }
+.hud-word { font-size: 1.05rem; font-weight: 700; color: var(--text); }
+
+.game-wrap {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--bg);
+  touch-action: none;
+}
+.game-canvas { display: block; width: 100%; cursor: crosshair; }
+.game-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(9, 12, 20, 0.72);
+}
+.game-overlay.hidden { display: none; }
+.overlay-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.7rem;
+  text-align: center;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.5rem 2rem;
+  max-width: 22rem;
+}
+.overlay-title { font-size: 1.3rem; font-weight: 700; }

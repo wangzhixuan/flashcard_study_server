@@ -24,6 +24,10 @@ database, and a no-build vanilla-JS single-page UI.
    You get instant feedback per question, and the final score is saved.
 4. **Progress** — per-deck progress with a color bar for the last 5 test scores
    and a line chart of score over time.
+5. **Play** — a shooting game. The current word is loaded as a projectile;
+   floating bubbles hold definitions and you aim a cannon to hit the matching
+   one. Difficulty ramps up with each level (more bubbles, faster movement,
+   smaller targets). Three lives; misses are free.
 
 ## Tech stack
 
