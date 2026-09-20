@@ -8,15 +8,15 @@ from fastapi.staticfiles import StaticFiles
 from .db import get_db, init_db
 from .schemas import (
     DeckCards,
+    GeneratedTest,
     ImportResult,
     ListCreate,
     ListDetail,
     ListSummary,
     ListUpdate,
     TestCreate,
-    TestPayload,
-    TestResult,
-    TestSubmit,
+    TestRecord,
+    TestResultCreate,
 )
 from .services import csv_import
 from .services import lists as lists_service
@@ -142,8 +142,8 @@ def api_delete_list(list_id: int) -> Response:
     return Response(status_code=204)
 
 
-@app.post("/api/tests", response_model=TestPayload, status_code=201)
-def api_create_test(payload: TestCreate) -> dict:
+@app.post("/api/tests/generate", response_model=GeneratedTest)
+def api_generate_test(payload: TestCreate) -> dict:
     try:
         with get_db() as conn:
             result = quiz.generate_test(
@@ -160,24 +160,26 @@ def api_create_test(payload: TestCreate) -> dict:
     return result
 
 
-@app.get("/api/tests/{test_id}", response_model=TestPayload)
-def api_get_test(test_id: int) -> dict:
+@app.post("/api/tests/results", response_model=TestRecord, status_code=201)
+def api_record_result(payload: TestResultCreate) -> dict:
     with get_db() as conn:
-        result = quiz.get_test_payload(conn, test_id)
-    if result is None:
-        raise HTTPException(status_code=404, detail="Test not found")
-    return result
-
-
-@app.post("/api/tests/{test_id}/submit", response_model=TestResult)
-def api_submit_test(test_id: int, payload: TestSubmit) -> dict:
-    with get_db() as conn:
-        result = quiz.grade_test(
-            conn, test_id, [answer.model_dump() for answer in payload.answers]
+        result = quiz.record_result(
+            conn,
+            payload.list_id,
+            payload.decks,
+            payload.question_types,
+            payload.total,
+            payload.correct,
         )
     if result is None:
-        raise HTTPException(status_code=404, detail="Test not found")
+        raise HTTPException(status_code=404, detail="List not found")
     return result
+
+
+@app.get("/api/tests", response_model=list[TestRecord])
+def api_list_results(list_id: int | None = None) -> list[dict]:
+    with get_db() as conn:
+        return quiz.list_results(conn, list_id)
 
 
 @app.get("/")

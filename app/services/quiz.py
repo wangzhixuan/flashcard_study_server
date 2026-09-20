@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import random
 import sqlite3
 
@@ -171,7 +170,7 @@ def generate_test(
     count: int | None = None,
 ) -> dict | None:
     list_row = conn.execute(
-        "SELECT id FROM lists WHERE id = ?", (list_id,)
+        "SELECT id, name FROM lists WHERE id = ?", (list_id,)
     ).fetchone()
     if list_row is None:
         return None
@@ -198,122 +197,92 @@ def generate_test(
     count = max(1, min(count, len(combos)))
     combos = combos[:count]
 
-    built: list[dict] = []
+    questions: list[dict] = []
     for qtype, target in combos:
         question = _BUILDERS[qtype](target, pool, all_words, rng)
         if question is not None:
-            built.append(question)
-    if not built:
+            questions.append(question)
+    if not questions:
         raise ValueError("Could not build any questions for this selection")
 
-    cur = conn.execute(
-        "INSERT INTO tests (list_id, deck_indices, question_types) VALUES (?, ?, ?)",
-        (list_id, ",".join(str(d) for d in sorted(deck_indices)), ",".join(types)),
-    )
-    test_id = cur.lastrowid
-    for position, question in enumerate(built):
-        conn.execute(
-            "INSERT INTO questions "
-            "(test_id, word_id, question_type, prompt, options_json, "
-            "correct_option_id, position) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (
-                test_id,
-                question["word_id"],
-                question["question_type"],
-                question["prompt"],
-                json.dumps(question["options"]),
-                question["correct_option_id"],
-                position,
-            ),
-        )
-    return get_test_payload(conn, test_id)
-
-
-def get_test_payload(conn: sqlite3.Connection, test_id: int) -> dict | None:
-    test = conn.execute(
-        "SELECT id, list_id, deck_indices, question_types FROM tests WHERE id = ?",
-        (test_id,),
-    ).fetchone()
-    if test is None:
-        return None
-
-    name_row = conn.execute(
-        "SELECT name FROM lists WHERE id = ?", (test["list_id"],)
-    ).fetchone()
-    rows = conn.execute(
-        "SELECT id, word_id, question_type, prompt, options_json, "
-        "correct_option_id, position FROM questions "
-        "WHERE test_id = ? ORDER BY position",
-        (test_id,),
-    ).fetchall()
-
     return {
-        "id": test["id"],
-        "list_id": test["list_id"],
-        "name": name_row["name"] if name_row is not None else "",
-        "decks": [int(x) for x in test["deck_indices"].split(",") if x.strip()],
-        "question_types": [x for x in test["question_types"].split(",") if x],
+        "list_id": list_row["id"],
+        "name": list_row["name"],
+        "decks": sorted({word["deck_index"] for _, word in combos}),
+        "question_types": types,
         "questions": [
             {
-                "id": row["id"],
-                "word_id": row["word_id"],
-                "position": row["position"],
-                "question_type": row["question_type"],
-                "prompt": row["prompt"],
-                "options": json.loads(row["options_json"]),
-                "correct_option_id": row["correct_option_id"],
+                "question_type": question["question_type"],
+                "prompt": question["prompt"],
+                "options": question["options"],
+                "correct_option_id": question["correct_option_id"],
             }
-            for row in rows
+            for question in questions
         ],
     }
 
 
-def grade_test(
-    conn: sqlite3.Connection, test_id: int, answers: list[dict]
+def _result_dict(row: sqlite3.Row) -> dict:
+    total = row["total"]
+    correct = row["correct"]
+    return {
+        "id": row["id"],
+        "list_id": row["list_id"],
+        "decks": [int(x) for x in row["deck_indices"].split(",") if x.strip()],
+        "question_types": [x for x in row["question_types"].split(",") if x],
+        "total": total,
+        "correct": correct,
+        "score": (correct / total) if total else 0.0,
+        "created_at": row["created_at"],
+    }
+
+
+def record_result(
+    conn: sqlite3.Connection,
+    list_id: int,
+    decks: list[int],
+    question_types: list[str],
+    total: int,
+    correct: int,
 ) -> dict | None:
-    payload = get_test_payload(conn, test_id)
-    if payload is None:
+    if conn.execute("SELECT 1 FROM lists WHERE id = ?", (list_id,)).fetchone() is None:
         return None
 
-    submitted: dict[int, str | None] = {}
-    for answer in answers:
-        question_id = answer.get("question_id")
-        if question_id is not None:
-            submitted[question_id] = answer.get("option_id")
+    total = max(0, total)
+    correct = max(0, min(correct, total))
+    cur = conn.execute(
+        "INSERT INTO tests (list_id, deck_indices, question_types, total, correct) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (
+            list_id,
+            ",".join(str(d) for d in sorted(set(decks))),
+            ",".join(question_types),
+            total,
+            correct,
+        ),
+    )
+    return get_result(conn, cur.lastrowid)
 
-    conn.execute("DELETE FROM answers WHERE test_id = ?", (test_id,))
 
-    results: list[dict] = []
-    correct_count = 0
-    for question in payload["questions"]:
-        chosen = submitted.get(question["id"])
-        is_correct = chosen is not None and chosen == question["correct_option_id"]
-        if is_correct:
-            correct_count += 1
-        conn.execute(
-            "INSERT INTO answers (test_id, word_id, question_type, is_correct) "
-            "VALUES (?, ?, ?, ?)",
-            (test_id, question["word_id"], question["question_type"], is_correct),
-        )
-        texts = {option["id"]: option["text"] for option in question["options"]}
-        results.append(
-            {
-                "question_id": question["id"],
-                "question_type": question["question_type"],
-                "prompt": question["prompt"],
-                "option_id": chosen,
-                "chosen_text": texts.get(chosen),
-                "correct_option_id": question["correct_option_id"],
-                "correct_text": texts.get(question["correct_option_id"]),
-                "is_correct": is_correct,
-            }
-        )
+def get_result(conn: sqlite3.Connection, test_id: int) -> dict | None:
+    row = conn.execute(
+        "SELECT id, list_id, deck_indices, question_types, total, correct, created_at "
+        "FROM tests WHERE id = ?",
+        (test_id,),
+    ).fetchone()
+    return _result_dict(row) if row is not None else None
 
-    total = len(payload["questions"])
-    return {
-        "test_id": test_id,
-        "total": total,
-        "correct": correct_count,
-        "score": (correct_count / total) if total else 0.0,
-        "answers": results,
-    }
+
+def list_results(
+    conn: sqlite3.Connection, list_id: int | None = None
+) -> list[dict]:
+    sql = (
+        "SELECT id, list_id, deck_indices, question_types, total, correct, created_at "
+        "FROM tests"
+    )
+    params: list[int] = []
+    if list_id is not None:
+        sql += " WHERE list_id = ?"
+        params.append(list_id)
+    sql += " ORDER BY id DESC"
+    return [_result_dict(row) for row in conn.execute(sql, params).fetchall()]

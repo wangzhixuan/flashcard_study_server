@@ -79,17 +79,13 @@ class TestOption(BaseModel):
 
 
 class TestQuestion(BaseModel):
-    id: int
-    word_id: int
-    position: int
     question_type: str
     prompt: str
     options: list[TestOption]
     correct_option_id: str
 
 
-class TestPayload(BaseModel):
-    id: int
+class GeneratedTest(BaseModel):
     list_id: int
     name: str
     decks: list[int]
@@ -97,29 +93,20 @@ class TestPayload(BaseModel):
     questions: list[TestQuestion]
 
 
-class AnswerSubmission(BaseModel):
-    question_id: int
-    option_id: str | None = None
+class TestResultCreate(BaseModel):
+    list_id: int
+    decks: list[int] = []
+    question_types: list[str] = []
+    total: int = Field(ge=0)
+    correct: int = Field(ge=0)
 
 
-class TestSubmit(BaseModel):
-    answers: list[AnswerSubmission]
-
-
-class AnswerResult(BaseModel):
-    question_id: int
-    question_type: str
-    prompt: str
-    option_id: str | None
-    chosen_text: str | None
-    correct_option_id: str
-    correct_text: str | None
-    is_correct: bool
-
-
-class TestResult(BaseModel):
-    test_id: int
+class TestRecord(BaseModel):
+    id: int
+    list_id: int
+    decks: list[int]
+    question_types: list[str]
     total: int
     correct: int
     score: float
-    answers: list[AnswerResult]
+    created_at: str

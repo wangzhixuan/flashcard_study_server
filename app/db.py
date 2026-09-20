@@ -30,33 +30,12 @@ CREATE TABLE IF NOT EXISTS tests (
     list_id         INTEGER NOT NULL REFERENCES lists(id) ON DELETE CASCADE,
     deck_indices    TEXT    NOT NULL DEFAULT '',
     question_types  TEXT    NOT NULL DEFAULT '',
+    total           INTEGER NOT NULL DEFAULT 0,
+    correct         INTEGER NOT NULL DEFAULT 0,
     created_at      TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE TABLE IF NOT EXISTS questions (
-    id                INTEGER PRIMARY KEY AUTOINCREMENT,
-    test_id           INTEGER NOT NULL REFERENCES tests(id) ON DELETE CASCADE,
-    word_id           INTEGER NOT NULL REFERENCES words(id) ON DELETE CASCADE,
-    question_type     TEXT    NOT NULL,
-    prompt            TEXT    NOT NULL,
-    options_json      TEXT    NOT NULL,
-    correct_option_id TEXT    NOT NULL,
-    position          INTEGER NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_questions_test ON questions(test_id);
-
-CREATE TABLE IF NOT EXISTS answers (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    test_id         INTEGER NOT NULL REFERENCES tests(id) ON DELETE CASCADE,
-    word_id         INTEGER NOT NULL REFERENCES words(id) ON DELETE CASCADE,
-    question_type   TEXT    NOT NULL,
-    is_correct      INTEGER NOT NULL,
-    created_at      TEXT    NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE INDEX IF NOT EXISTS idx_answers_test ON answers(test_id);
-CREATE INDEX IF NOT EXISTS idx_answers_word ON answers(word_id);
+CREATE INDEX IF NOT EXISTS idx_tests_list ON tests(list_id);
 """
 
 
@@ -68,10 +47,21 @@ def connect() -> sqlite3.Connection:
     return conn
 
 
+def _migrate(conn: sqlite3.Connection) -> None:
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(tests)")}
+    if "total" not in columns:
+        conn.execute("ALTER TABLE tests ADD COLUMN total INTEGER NOT NULL DEFAULT 0")
+    if "correct" not in columns:
+        conn.execute("ALTER TABLE tests ADD COLUMN correct INTEGER NOT NULL DEFAULT 0")
+    conn.execute("DROP TABLE IF EXISTS answers")
+    conn.execute("DROP TABLE IF EXISTS questions")
+
+
 def init_db() -> None:
     conn = connect()
     try:
         conn.executescript(SCHEMA)
+        _migrate(conn)
         conn.commit()
     finally:
         conn.close()

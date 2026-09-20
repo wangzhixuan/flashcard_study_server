@@ -551,7 +551,7 @@ async function renderTestSetup(listId) {
 
     startBtn.disabled = true;
     try {
-      const test = await apiSend("POST", "/api/tests", {
+      const test = await apiSend("POST", "/api/tests/generate", {
         list_id: listId,
         decks,
         question_types: types,
@@ -581,7 +581,7 @@ async function renderTestSetup(listId) {
 }
 
 function renderTestRun(test, listId) {
-  const state = { index: 0, answers: [] };
+  const state = { index: 0, correct: 0, review: [] };
 
   const progress = el("span", { class: "counter" });
   const typeTag = el("span", { text: "" });
@@ -624,7 +624,14 @@ function renderTestRun(test, listId) {
         if (btn.dataset.optionId === option.id) btn.classList.add("wrong");
       }
     }
-    state.answers.push({ question_id: question.id, option_id: option.id });
+    if (isCorrect) state.correct += 1;
+    state.review.push({
+      question_type: question.question_type,
+      prompt: question.prompt,
+      chosen_text: option.text,
+      correct_text: question.options.find((o) => o.id === question.correct_option_id).text,
+      is_correct: isCorrect,
+    });
     feedback.textContent = isCorrect ? "Correct!" : "Incorrect";
     feedback.className = `feedback ${isCorrect ? "ok" : "bad"}`;
     nextBtn.disabled = false;
@@ -639,10 +646,14 @@ function renderTestRun(test, listId) {
     }
     nextBtn.disabled = true;
     try {
-      const result = await apiSend("POST", `/api/tests/${test.id}/submit`, {
-        answers: state.answers,
+      const result = await apiSend("POST", "/api/tests/results", {
+        list_id: test.list_id,
+        decks: test.decks,
+        question_types: test.question_types,
+        total: test.questions.length,
+        correct: state.correct,
       });
-      renderTestResults(result, test, listId);
+      renderTestResults(result, state.review, listId);
     } catch (err) {
       notify(err.message, "error");
       nextBtn.disabled = false;
@@ -661,16 +672,16 @@ function renderTestRun(test, listId) {
   );
 }
 
-function renderTestResults(result, test, listId) {
+function renderTestResults(result, review, listId) {
   const pct = Math.round(result.score * 100);
 
   const summary = el("div", { class: "panel result-summary" }, [
     el("div", { class: "score", text: `${pct}%` }),
     el("div", { class: "muted", text: `${result.correct} / ${result.total} correct` }),
-    el("div", { class: "muted", text: "Result saved." }),
+    el("div", { class: "muted", text: "Score saved." }),
   ]);
 
-  const items = result.answers.map((answer) =>
+  const items = review.map((answer) =>
     el("div", { class: `review ${answer.is_correct ? "ok" : "bad"}` }, [
       el("div", { class: "review-head" }, [
         el("span", { class: "badge", text: answer.is_correct ? "✓" : "✗" }),
@@ -698,9 +709,9 @@ function renderTestResults(result, test, listId) {
 
   app.replaceChildren(
     backButton("← Back to list", () => renderListDetail(listId)),
-    el("h2", { text: `Results: ${test.name}` }),
+    el("h2", { text: "Results" }),
     summary,
-    el("div", { class: "section-title", text: "Review" }),
+    el("div", { class: "section-title", text: "Review (not saved)" }),
     ...items,
     el("div", { class: "actions" }, [retakeBtn, studyBtn])
   );
