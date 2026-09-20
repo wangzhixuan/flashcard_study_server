@@ -55,6 +55,47 @@ def _distractors(
     return picked
 
 
+def _pick_distinct(
+    pool: list[dict],
+    all_words: list[dict],
+    rng: random.Random,
+    count: int,
+) -> list[dict]:
+    """Pick words that are pairwise distinct by id, term and definition."""
+    seen_ids: set[int] = set()
+    seen_terms: set[str] = set()
+    seen_defs: set[str] = set()
+    picked: list[dict] = []
+    for source in (pool, all_words):
+        candidates = list(source)
+        rng.shuffle(candidates)
+        for word in candidates:
+            if (
+                word["id"] in seen_ids
+                or word["term"] in seen_terms
+                or word["definition"] in seen_defs
+            ):
+                continue
+            picked.append(word)
+            seen_ids.add(word["id"])
+            seen_terms.add(word["term"])
+            seen_defs.add(word["definition"])
+            if len(picked) >= count:
+                return picked
+    return picked
+
+
+def _without(word: dict, words: list[dict]) -> list[dict]:
+    return [item for item in words if item["id"] != word["id"]]
+
+
+def _pair(term_word: dict, def_word: dict) -> dict:
+    return {
+        "id": f"{term_word['id']}:{def_word['id']}",
+        "text": f"{term_word['term']} — {def_word['definition']}",
+    }
+
+
 def _build_word_to_def(
     target: dict, pool: list[dict], all_words: list[dict], rng: random.Random
 ) -> dict:
@@ -91,23 +132,17 @@ def _build_def_to_word(
 
 def _build_pair_correct(
     target: dict, pool: list[dict], all_words: list[dict], rng: random.Random
-) -> dict:
-    distractors = _distractors(
-        target, pool, all_words, rng, "definition", MAX_OPTIONS - 1
+) -> dict | None:
+    others = _pick_distinct(
+        _without(target, pool), _without(target, all_words), rng, MAX_OPTIONS - 1
     )
-    options = [
-        {
-            "id": f"{target['id']}:{target['id']}",
-            "text": f"{target['term']} — {target['definition']}",
-        }
-    ]
-    for word in distractors:
-        options.append(
-            {
-                "id": f"{target['id']}:{word['id']}",
-                "text": f"{target['term']} — {word['definition']}",
-            }
-        )
+    if len(others) < MAX_OPTIONS - 1:
+        return None
+
+    options = [_pair(target, target)]
+    for index, term_word in enumerate(others):
+        def_word = others[(index + 1) % len(others)]
+        options.append(_pair(term_word, def_word))
     rng.shuffle(options)
     return {
         "word_id": target["id"],
@@ -121,28 +156,19 @@ def _build_pair_correct(
 def _build_pair_incorrect(
     target: dict, pool: list[dict], all_words: list[dict], rng: random.Random
 ) -> dict | None:
-    others = _distractors(target, pool, all_words, rng, "definition", MAX_OPTIONS - 1)
-    if len(others) < MAX_OPTIONS - 1:
+    others = _pick_distinct(
+        _without(target, pool), _without(target, all_words), rng, MAX_OPTIONS
+    )
+    if len(others) < MAX_OPTIONS:
         return None
-    first, second, wrong = others[0], others[1], others[2]
-    incorrect_id = f"{wrong['id']}:{target['id']}"
+
+    first, second, term_word, def_word = others[0], others[1], others[2], others[3]
+    incorrect_id = f"{term_word['id']}:{def_word['id']}"
     options = [
-        {
-            "id": f"{target['id']}:{target['id']}",
-            "text": f"{target['term']} — {target['definition']}",
-        },
-        {
-            "id": f"{first['id']}:{first['id']}",
-            "text": f"{first['term']} — {first['definition']}",
-        },
-        {
-            "id": f"{second['id']}:{second['id']}",
-            "text": f"{second['term']} — {second['definition']}",
-        },
-        {
-            "id": incorrect_id,
-            "text": f"{wrong['term']} — {target['definition']}",
-        },
+        _pair(target, target),
+        _pair(first, first),
+        _pair(second, second),
+        _pair(term_word, def_word),
     ]
     rng.shuffle(options)
     return {
@@ -186,8 +212,10 @@ def generate_test(
         raise ValueError("The selected decks have no words")
     if len(all_words) < 2:
         raise ValueError("Need at least 2 words to build a test")
-    if any(t.startswith("pair_") for t in types) and len(all_words) < MAX_OPTIONS:
-        raise ValueError("Pair questions need at least 4 words")
+    if "pair_correct" in types and len(all_words) < MAX_OPTIONS:
+        raise ValueError("'Pick the correct pair' needs at least 4 words")
+    if "pair_incorrect" in types and len(all_words) < MAX_OPTIONS + 1:
+        raise ValueError("'Spot the incorrect pair' needs at least 5 words")
 
     combos = [(qtype, word) for qtype in types for word in pool]
     rng = random.Random()
